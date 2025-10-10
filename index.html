@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Powder Game - Physics Simulator</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Powder Game</h1>
+            <div class="controls">
+                <div class="particle-selector">
+                    <button class="particle-btn active" data-type="sand">Sand</button>
+                    <button class="particle-btn" data-type="water">Water</button>
+                    <button class="particle-btn" data-type="stone">Stone</button>
+                    <button class="particle-btn" data-type="fire">Fire</button>
+                    <button class="particle-btn" data-type="wood">Wood</button>
+                    <button class="particle-btn" data-type="oil">Oil</button>
+                    <button class="particle-btn" data-type="acid">Acid</button>
+                    <button class="particle-btn" data-type="steam">Steam</button>
+                    <button class="particle-btn" data-type="erase">Erase</button>
+                </div>
+                <div class="tool-controls">
+                    <label>
+                        Brush Size: <span id="brushSizeValue">3</span>
+                        <input type="range" id="brushSize" min="1" max="10" value="3">
+                    </label>
+                    <button id="clearBtn">Clear All</button>
+                    <button id="pauseBtn">Pause</button>
+                </div>
+            </div>
+        </header>
+        <canvas id="canvas"></canvas>
+        <div class="info">
+            <span id="fps">FPS: 60</span>
+            <span id="particles">Particles: 0</span>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
+
