@@ -72,8 +72,11 @@ h1 {
 
 .particle-btn[data-type="sand"] { border-color: #c2b280; }
 .particle-btn[data-type="water"] { border-color: #4a9eff; }
+.particle-btn[data-type="oil"] { border-color: #8B4513; }
 .particle-btn[data-type="stone"] { border-color: #808080; }
 .particle-btn[data-type="ice"] { border-color: #b8e6ff; }
+.particle-btn[data-type="steel"] { border-color: #C0C0C0; }
+.particle-btn[data-type="salt"] { border-color: #FFFFFF; }
 .particle-btn[data-type="erase"] { border-color: #ff0000; }
 
 .tool-controls {

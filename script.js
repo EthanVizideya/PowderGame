@@ -16,9 +16,14 @@ const GRAVITY_STRENGTH = 1.0; // How strongly gravity pulls particles down
 const PARTICLE_TYPES = {
     empty: { id: 0, color: '#0a0a0a', density: 0, state: 'empty' },
     sand: { id: 1, color: '#c2b280', density: 3, state: 'powder', dispersion: 2 },
-    water: { id: 2, color: '#4a9eff', density: 2, state: 'liquid', dispersion: 4 },
-    stone: { id: 3, color: '#808080', density: 10, state: 'powder', dispersion: 1 },
-    ice: { id: 4, color: '#b8e6ff', density: 8, state: 'solid', freezePower: 0.02 }
+    water: { id: 2, color: '#4a9eff', density: 3, state: 'liquid', dispersion: 4 },
+    oil: { id: 3, color: '#8B4513', density: 1, state: 'liquid', dispersion: 4 },
+    stone: { id: 4, color: '#808080', density: 10, state: 'solid', dispersion: 0 },
+    ice: { id: 5, color: '#b8e6ff', density: 8, state: 'solid', freezePower: 0.02 },
+    steel: { id: 6, color: '#C0C0C0', density: 15, state: 'solid', dispersion: 0 },
+    rust: { id: 7, color: '#8B4513', density: 10, state: 'powder', dispersion: 0 },
+    salt: { id: 8, color: '#FFFFFF', density: 3, state: 'powder', dispersion: 2 },
+    saltwater: { id: 9, color: '#87CEEB', density: 2, state: 'liquid', dispersion: 4 }
 };
 
 
@@ -49,9 +54,14 @@ let mouseY = 0;
 // Debug info
 let debugInfo = {
     waterParticles: 0,
+    oilParticles: 0,
     sandParticles: 0,
     stoneParticles: 0,
     iceParticles: 0,
+    steelParticles: 0,
+    rustParticles: 0,
+    saltParticles: 0,
+    saltwaterParticles: 0,
     lastWaterAction: 'none',
     frameCount: 0,
     waterMoved: 0,
@@ -167,12 +177,24 @@ function updateParticle(x, y) {
         
         nextGrid[y][x] = particle;
     }
-    // Liquid physics (water) - simple and stable
+    // Stone physics - only falls straight down, no diagonal movement
+    else if (particle.type === 'stone') {
+        if (moveDown(x, y, particle)) return;
+        
+        // Stone doesn't move diagonally or sideways - it just stays in place
+        nextGrid[y][x] = particle;
+    }
+    // Ice and steel physics - solid objects that don't move or displace anything
+    else if (particle.type === 'ice' || particle.type === 'steel') {
+        // Ice and steel are completely solid - they don't move or displace anything
+        nextGrid[y][x] = particle;
+    }
+    // Liquid physics (water and oil) - simple and stable
     else if (type.state === 'liquid') {
         // Try to fall down first (gravity pulls down)
         if (moveDown(x, y, particle)) {
             debugInfo.waterMoved++;
-            debugInfo.lastWaterAction = `Water fell from (${x}, ${y})`;
+            debugInfo.lastWaterAction = `${particle.type} fell from (${x}, ${y})`;
             return;
         }
         
@@ -187,22 +209,25 @@ function updateParticle(x, y) {
         for (const dir of directions) {
             if (moveDiagonal(x, y, particle, dir)) {
                 debugInfo.waterMoved++;
-                debugInfo.lastWaterAction = `Water moved diagonal ${dir} from (${x}, ${y})`;
+                debugInfo.lastWaterAction = `${particle.type} moved diagonal ${dir} from (${x}, ${y})`;
                 return;
             }
         }
         
-        // Simple sideways flow - only if there's space
-        const sideDir = Math.random() < 0.5 ? -1 : 1;
-        if (moveSide(x, y, particle, sideDir)) {
-            debugInfo.waterMoved++;
-            debugInfo.lastWaterAction = `Water flowed ${sideDir} from (${x}, ${y})`;
-            return;
+        // Sideways flow - both oil and water flow the same way
+        const flowChance = 1.0; // Both oil and water flow 100% of the time
+        if (Math.random() < flowChance) {
+            const sideDir = Math.random() < 0.5 ? -1 : 1;
+            if (moveSide(x, y, particle, sideDir)) {
+                debugInfo.waterMoved++;
+                debugInfo.lastWaterAction = `${particle.type} flowed ${sideDir} from (${x}, ${y})`;
+                return;
+            }
         }
         
-        // If water can't flow, stay in place
+        // If liquid can't flow, stay in place
         debugInfo.waterStuck++;
-        debugInfo.lastWaterAction = `Water stable at (${x}, ${y})`;
+        debugInfo.lastWaterAction = `${particle.type} stable at (${x}, ${y})`;
         nextGrid[y][x] = particle;
     }
     // Gas physics (fire, steam)
@@ -218,8 +243,8 @@ function updateParticle(x, y) {
         
         nextGrid[y][x] = particle;
     }
-    // Solid physics (stone, wood, ice)
-    else if (type.state === 'solid') {
+    // Solid physics - ice and steel have their own physics above
+    else if (type.state === 'solid' && particle.type !== 'stone' && particle.type !== 'ice' && particle.type !== 'steel') {
         nextGrid[y][x] = particle;
     }
 
@@ -227,12 +252,53 @@ function updateParticle(x, y) {
 
 function moveDown(x, y, particle) {
     if (y + 1 < HEIGHT - 1 && canMove(particle, grid[y + 1][x]) && canMoveToNextGrid(x, y + 1, particle)) {
-        // If moving into water, displace it to an adjacent space
-        if (grid[y + 1][x].type === 'water' && (particle.type === 'stone' || particle.type === 'sand')) {
-            displaceWater(grid[y + 1][x], x, y + 1);
+        // If moving into water or oil, swap positions - liquid goes up, displacing particle goes down
+        if ((grid[y + 1][x].type === 'water' || grid[y + 1][x].type === 'oil') && 
+            (particle.type === 'stone' || particle.type === 'sand')) {
+            nextGrid[y][x] = grid[y + 1][x]; // Liquid goes to displacing particle's old position (up)
+            nextGrid[y + 1][x] = particle; // Displacing particle goes down
         }
-        nextGrid[y][x] = { type: 'empty' };
-        nextGrid[y + 1][x] = particle;
+        // If water is moving into oil or salt water, push the lighter liquid up
+        else if (grid[y + 1][x].type === 'oil' && particle.type === 'water') {
+            // Find a spot above to push the oil to
+            let oilY = y - 1;
+            while (oilY >= 0 && nextGrid[oilY][x].type !== 'empty') {
+                oilY--;
+            }
+            if (oilY >= 0) {
+                nextGrid[oilY][x] = grid[y + 1][x]; // Push oil up
+            }
+            nextGrid[y][x] = { type: 'empty' }; // Water's old position becomes empty
+            nextGrid[y + 1][x] = particle; // Water takes oil's position
+        }
+        else if (grid[y + 1][x].type === 'saltwater' && particle.type === 'water') {
+            // Find a spot above to push the salt water to
+            let saltwaterY = y - 1;
+            while (saltwaterY >= 0 && nextGrid[saltwaterY][x].type !== 'empty') {
+                saltwaterY--;
+            }
+            if (saltwaterY >= 0) {
+                nextGrid[saltwaterY][x] = grid[y + 1][x]; // Push salt water up
+            }
+            nextGrid[y][x] = { type: 'empty' }; // Water's old position becomes empty
+            nextGrid[y + 1][x] = particle; // Water takes salt water's position
+        }
+        // If salt water is moving into oil, push oil up
+        else if (grid[y + 1][x].type === 'oil' && particle.type === 'saltwater') {
+            // Find a spot above to push the oil to
+            let oilY = y - 1;
+            while (oilY >= 0 && nextGrid[oilY][x].type !== 'empty') {
+                oilY--;
+            }
+            if (oilY >= 0) {
+                nextGrid[oilY][x] = grid[y + 1][x]; // Push oil up
+            }
+            nextGrid[y][x] = { type: 'empty' }; // Salt water's old position becomes empty
+            nextGrid[y + 1][x] = particle; // Salt water takes oil's position
+        } else {
+            nextGrid[y][x] = { type: 'empty' }; // Normal empty space
+            nextGrid[y + 1][x] = particle; // Particle goes down
+        }
         return true;
     }
     return false;
@@ -240,7 +306,8 @@ function moveDown(x, y, particle) {
 
 function moveUp(x, y, particle) {
     if (y - 1 >= 0 && canMove(particle, grid[y - 1][x]) && canMoveToNextGrid(x, y - 1, particle)) {
-        nextGrid[y - 1][x] = particle;
+        nextGrid[y][x] = { type: 'empty' }; // Normal empty space
+        nextGrid[y - 1][x] = particle; // Particle goes up
         return true;
     }
     return false;
@@ -249,12 +316,28 @@ function moveUp(x, y, particle) {
 function moveDiagonal(x, y, particle, dir) {
     const newX = x + dir;
     if (newX >= 0 && newX < WIDTH && y + 1 < HEIGHT - 1 && canMove(particle, grid[y + 1][newX]) && canMoveToNextGrid(newX, y + 1, particle)) {
-        // If moving into water, displace it to an adjacent space
-        if (grid[y + 1][newX].type === 'water' && (particle.type === 'stone' || particle.type === 'sand')) {
-            displaceWater(grid[y + 1][newX], newX, y + 1);
+        // If moving into water or oil, swap positions - liquid goes up, displacing particle goes down diagonally
+        if ((grid[y + 1][newX].type === 'water' || grid[y + 1][newX].type === 'oil') && 
+            (particle.type === 'stone' || particle.type === 'sand')) {
+            nextGrid[y][x] = grid[y + 1][newX]; // Liquid goes to displacing particle's old position (up)
+            nextGrid[y + 1][newX] = particle; // Displacing particle goes down diagonally
         }
-        nextGrid[y][x] = { type: 'empty' };
-        nextGrid[y + 1][newX] = particle;
+        // If water is moving into oil diagonally, push oil up and take its place
+        else if (grid[y + 1][newX].type === 'oil' && particle.type === 'water') {
+            // Find a spot above to push the oil to
+            let oilY = y - 1;
+            while (oilY >= 0 && nextGrid[oilY][newX].type !== 'empty') {
+                oilY--;
+            }
+            if (oilY >= 0) {
+                nextGrid[oilY][newX] = grid[y + 1][newX]; // Push oil up
+            }
+            nextGrid[y][x] = { type: 'empty' }; // Water's old position becomes empty
+            nextGrid[y + 1][newX] = particle; // Water takes oil's position
+        } else {
+            nextGrid[y][x] = { type: 'empty' }; // Normal empty space
+            nextGrid[y + 1][newX] = particle; // Particle goes down diagonally
+        }
         return true;
     }
     return false;
@@ -263,7 +346,8 @@ function moveDiagonal(x, y, particle, dir) {
 function moveDiagonalUp(x, y, particle, dir) {
     const newX = x + dir;
     if (newX >= 0 && newX < WIDTH && y - 1 >= 0 && canMove(particle, grid[y - 1][newX]) && canMoveToNextGrid(newX, y - 1, particle)) {
-        nextGrid[y - 1][newX] = particle;
+        nextGrid[y][x] = { type: 'empty' }; // Normal empty space
+        nextGrid[y - 1][newX] = particle; // Particle goes up diagonally
         return true;
     }
     return false;
@@ -272,12 +356,28 @@ function moveDiagonalUp(x, y, particle, dir) {
 function moveSide(x, y, particle, dir) {
     const newX = x + dir;
     if (newX >= 0 && newX < WIDTH && canMove(particle, grid[y][newX]) && canMoveToNextGrid(newX, y, particle)) {
-        // If moving into water, displace it to an adjacent space
-        if (grid[y][newX].type === 'water' && (particle.type === 'stone' || particle.type === 'sand')) {
-            displaceWater(grid[y][newX], newX, y);
+        // If moving into water or oil, swap positions - liquid goes to displacing particle's old position
+        if ((grid[y][newX].type === 'water' || grid[y][newX].type === 'oil') && 
+            (particle.type === 'stone' || particle.type === 'sand')) {
+            nextGrid[y][x] = grid[y][newX]; // Liquid goes to displacing particle's old position
+            nextGrid[y][newX] = particle; // Displacing particle moves sideways
         }
-        nextGrid[y][x] = { type: 'empty' };
-        nextGrid[y][newX] = particle;
+        // If water is moving into oil sideways, push oil up and take its place
+        else if (grid[y][newX].type === 'oil' && particle.type === 'water') {
+            // Find a spot above to push the oil to
+            let oilY = y - 1;
+            while (oilY >= 0 && nextGrid[oilY][newX].type !== 'empty') {
+                oilY--;
+            }
+            if (oilY >= 0) {
+                nextGrid[oilY][newX] = grid[y][newX]; // Push oil up
+            }
+            nextGrid[y][x] = { type: 'empty' }; // Water's old position becomes empty
+            nextGrid[y][newX] = particle; // Water takes oil's position
+        } else {
+            nextGrid[y][x] = { type: 'empty' }; // Normal empty space
+            nextGrid[y][newX] = particle; // Particle moves sideways
+        }
         return true;
     }
     return false;
@@ -291,9 +391,42 @@ function canMoveToNextGrid(x, y, particle) {
     // If target is empty, we can move there
     if (target.type === 'empty') return true;
     
-    // Stone and sand can move into water positions (they delete the water)
-    if ((particle.type === 'stone' || particle.type === 'sand') && target.type === 'water') {
+    // Stone and sand can move into water and oil positions (they displace the liquid)
+    if ((particle.type === 'stone' || particle.type === 'sand') && (target.type === 'water' || target.type === 'oil')) {
         return true;
+    }
+    
+    // Ice and steel cannot move into any positions - they are solid objects
+    if (particle.type === 'ice' || particle.type === 'steel') {
+        return false; // Ice and steel don't move into other positions
+    }
+    
+    // Water can move into oil and salt water positions (water is densest)
+    if (particle.type === 'water' && (target.type === 'oil' || target.type === 'saltwater')) {
+        return true; // Water can displace oil and salt water
+    }
+    
+    // Salt water can move into oil positions (salt water is denser than oil)
+    if (particle.type === 'saltwater' && target.type === 'oil') {
+        return true; // Salt water can displace oil
+    }
+    
+    // Oil cannot move into water or salt water positions (oil is lightest)
+    if (particle.type === 'oil' && (target.type === 'water' || target.type === 'saltwater')) {
+        return false; // Oil cannot displace water or salt water
+    }
+    
+    // Salt water cannot move into water positions (salt water is lighter than water)
+    if (particle.type === 'saltwater' && target.type === 'water') {
+        return false; // Salt water cannot displace water
+    }
+    
+    const particleType = PARTICLE_TYPES[particle.type];
+    const targetType = PARTICLE_TYPES[target.type];
+    
+    // Denser particles can displace less dense ones (but not water displacing oil)
+    if (particleType.density > targetType.density) {
+        return Math.random() < 0.5; // 50% chance to displace
     }
     
     // Never allow true overlaps - each position can only hold one particle
@@ -304,53 +437,46 @@ function canMoveToNextGrid(x, y, particle) {
 function canMove(particle, target) {
     if (target.type === 'empty') return true;
     
-    // Stone and sand can displace water
-    if ((particle.type === 'stone' || particle.type === 'sand') && target.type === 'water') {
-        return true; // Always displace water
+    // Stone and sand can displace water and oil
+    if ((particle.type === 'stone' || particle.type === 'sand') && (target.type === 'water' || target.type === 'oil')) {
+        return true; // Always displace liquids
+    }
+    
+    // Ice and steel cannot displace anything - they are solid objects
+    if (particle.type === 'ice' || particle.type === 'steel') {
+        return false; // Ice and steel don't displace anything
+    }
+    
+    // Water can displace oil and salt water (water is densest)
+    if (particle.type === 'water' && (target.type === 'oil' || target.type === 'saltwater')) {
+        return true; // Water can displace oil and salt water
+    }
+    
+    // Salt water can displace oil (salt water is denser than oil)
+    if (particle.type === 'saltwater' && target.type === 'oil') {
+        return true; // Salt water can displace oil
+    }
+    
+    // Oil cannot displace water or salt water (oil is lightest)
+    if (particle.type === 'oil' && (target.type === 'water' || target.type === 'saltwater')) {
+        return false; // Oil cannot displace water or salt water
+    }
+    
+    // Salt water cannot displace water (salt water is lighter than water)
+    if (particle.type === 'saltwater' && target.type === 'water') {
+        return false; // Salt water cannot displace water
     }
     
     const particleType = PARTICLE_TYPES[particle.type];
     const targetType = PARTICLE_TYPES[target.type];
     
-    // Denser particles can displace less dense ones
+    // Denser particles can displace less dense ones (but not water displacing oil)
     if (particleType.density > targetType.density) {
         return Math.random() < 0.5; // 50% chance to displace
     }
     return false;
 }
 
-// Displace water to an adjacent empty space
-function displaceWater(waterParticle, fromX, fromY) {
-    // Try to find an empty space for the displaced water
-    const directions = [
-        [-1, -1], [-1, 0], [-1, 1],
-        [0, -1],           [0, 1],
-        [1, -1],  [1, 0],  [1, 1]
-    ];
-    
-    // Shuffle directions for random placement
-    for (let i = directions.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [directions[i], directions[j]] = [directions[j], directions[i]];
-    }
-    
-    for (const [dx, dy] of directions) {
-        const newX = fromX + dx;
-        const newY = fromY + dy;
-        
-        // Check bounds
-        if (newX < 0 || newX >= WIDTH || newY < 0 || newY >= HEIGHT) continue;
-        
-        // Check if space is empty in current grid
-        if (grid[newY][newX].type === 'empty') {
-            grid[newY][newX] = waterParticle;
-            return true;
-        }
-    }
-    
-    // If no space found, water is lost (evaporated)
-    return false;
-}
 
 
 // Calculate water level at a position (how many water particles are stacked above)
@@ -390,12 +516,82 @@ function checkIceFreezing(x, y) {
         // Check bounds
         if (newX < 0 || newX >= WIDTH || newY < 0 || newY >= HEIGHT) continue;
         
-        // Check if adjacent particle is water
+        // Check if adjacent particle is water (but not salt water)
         if (grid[newY][newX].type === 'water') {
             // Random chance to freeze based on freezePower
             if (Math.random() < freezeChance) {
                 nextGrid[newY][newX] = { type: 'ice' };
                 debugInfo.lastWaterAction = `Ice froze water at (${newX}, ${newY})`;
+            }
+        }
+        // Salt water cannot be frozen by ice
+    }
+}
+
+// Check if steel can rust when touching water
+function checkSteelRusting(x, y) {
+    const particle = grid[y][x];
+    if (particle.type !== 'steel') return;
+    
+    const rustChance = 0.0001; // Very slow rusting - 0.01% chance per frame (10x slower)
+    
+    // Check all 8 adjacent positions
+    const directions = [
+        [-1, -1], [-1, 0], [-1, 1],
+        [0, -1],           [0, 1],
+        [1, -1],  [1, 0],  [1, 1]
+    ];
+    
+    for (const [dx, dy] of directions) {
+        const newX = x + dx;
+        const newY = y + dy;
+        
+        // Check bounds
+        if (newX < 0 || newX >= WIDTH || newY < 0 || newY >= HEIGHT) continue;
+        
+        // Check if adjacent particle is water
+        if (grid[newY][newX].type === 'water') {
+            // Random chance to rust based on rustChance
+            if (Math.random() < rustChance) {
+                nextGrid[y][x] = { type: 'rust' };
+                debugInfo.lastWaterAction = `Steel rusted at (${x}, ${y})`;
+                return; // Only rust one steel particle per frame
+            }
+        }
+    }
+}
+
+// Check if salt can dissolve in water
+function checkSaltDissolution(x, y) {
+    const particle = grid[y][x];
+    if (particle.type !== 'salt') return;
+    
+    const dissolveChance = 0.1; // 10% chance per frame when touching water
+    
+    // Check all 8 adjacent positions
+    const directions = [
+        [-1, -1], [-1, 0], [-1, 1],
+        [0, -1],           [0, 1],
+        [1, -1],  [1, 0],  [1, 1]
+    ];
+    
+    for (const [dx, dy] of directions) {
+        const newX = x + dx;
+        const newY = y + dy;
+        
+        // Check bounds
+        if (newX < 0 || newX >= WIDTH || newY < 0 || newY >= HEIGHT) continue;
+        
+        // Check if adjacent particle is water
+        if (grid[newY][newX].type === 'water') {
+            // Random chance to dissolve based on dissolveChance
+            if (Math.random() < dissolveChance) {
+                // Convert the water to salt water
+                nextGrid[newY][newX] = { type: 'saltwater' };
+                // Remove the salt particle
+                nextGrid[y][x] = { type: 'empty' };
+                debugInfo.lastWaterAction = `Salt dissolved at (${x}, ${y})`;
+                return; // Only dissolve one salt particle per frame
             }
         }
     }
@@ -429,10 +625,12 @@ function update() {
         }
     }
 
-    // Check for ice freezing after all particles are processed
+    // Check for ice freezing, steel rusting, and salt dissolution after all particles are processed
     for (let y = 0; y < HEIGHT; y++) {
         for (let x = 0; x < WIDTH; x++) {
             checkIceFreezing(x, y);
+            checkSteelRusting(x, y);
+            checkSaltDissolution(x, y);
         }
     }
 
@@ -474,18 +672,28 @@ function updateInfo() {
     // Count particles dynamically
     let count = 0;
     debugInfo.waterParticles = 0;
+    debugInfo.oilParticles = 0;
     debugInfo.sandParticles = 0;
     debugInfo.stoneParticles = 0;
     debugInfo.iceParticles = 0;
+    debugInfo.steelParticles = 0;
+    debugInfo.rustParticles = 0;
+    debugInfo.saltParticles = 0;
+    debugInfo.saltwaterParticles = 0;
     
     for (let y = 0; y < HEIGHT; y++) {
         for (let x = 0; x < WIDTH; x++) {
             if (grid[y][x].type !== 'empty') {
                 count++;
                 if (grid[y][x].type === 'water') debugInfo.waterParticles++;
+                else if (grid[y][x].type === 'oil') debugInfo.oilParticles++;
                 else if (grid[y][x].type === 'sand') debugInfo.sandParticles++;
                 else if (grid[y][x].type === 'stone') debugInfo.stoneParticles++;
                 else if (grid[y][x].type === 'ice') debugInfo.iceParticles++;
+                else if (grid[y][x].type === 'steel') debugInfo.steelParticles++;
+                else if (grid[y][x].type === 'rust') debugInfo.rustParticles++;
+                else if (grid[y][x].type === 'salt') debugInfo.saltParticles++;
+                else if (grid[y][x].type === 'saltwater') debugInfo.saltwaterParticles++;
             }
         }
     }
@@ -498,11 +706,16 @@ function updateInfo() {
     if (debugInfo.frameCount % 60 === 0) {
         console.table({
             'Water Particles': debugInfo.waterParticles,
+            'Oil Particles': debugInfo.oilParticles,
             'Water Moved': debugInfo.waterMoved,
             'Water Stuck': debugInfo.waterStuck,
             'Sand Particles': debugInfo.sandParticles,
             'Stone Particles': debugInfo.stoneParticles,
-            'Ice Particles': debugInfo.iceParticles
+            'Ice Particles': debugInfo.iceParticles,
+            'Steel Particles': debugInfo.steelParticles,
+            'Rust Particles': debugInfo.rustParticles,
+            'Salt Particles': debugInfo.saltParticles,
+            'Salt Water Particles': debugInfo.saltwaterParticles
         });
         // Reset counters
         debugInfo.waterMoved = 0;
